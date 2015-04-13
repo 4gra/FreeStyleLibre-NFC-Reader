@@ -1,3 +1,7 @@
+Development Repository only
+===========================
+Please direct all attention to [vicktor/FreeStyleLibre-NFC-Reader](vicktor/FreeStyleLibre-NFC-Reader)
+
 FreeStyleLibre-NFC-Reader
 =========================
 
