@@ -29,7 +29,7 @@ package com.socialdiabetes.freestylelibre;
         import java.util.concurrent.Executors;
         import java.util.concurrent.ScheduledExecutorService;
         import java.util.concurrent.ScheduledFuture;
-
+        import com.socialdiabetes.freestylelibre.NFCWatchdogRefresher;
 
 /**
  *
@@ -39,37 +39,52 @@ package com.socialdiabetes.freestylelibre;
 public class Abbott extends Activity {
 
     public static final String MIME_TEXT_PLAIN = "text/plain";
+    public static final boolean USE_SI = true;
     public static final double SI_FACTOR = 0.05551;
+    public static final int LOOP_SECONDS = 300;
 
-    private NfcAdapter mNfcAdapter;
+    protected NfcAdapter mNfcAdapter;
 
     private String lectura, buffer;
     private double currentGlucose = 0f;
     private TextView tvResult;
 
+    public static boolean play_sounds = false;
+    public static boolean write_file = false;
+    public static int vibrate_start = 0;
+    public static int vibrate_ok = 0;
+    public static int vibrate_err = 0;
+
     // store last Tag for periodic check
     Tag tag = null;
     ScheduledFuture b;
+
+    /**
+     * TODO: look at https://groups.google.com/forum/#!topic/android-developers/8-17f6ZLYJY
+     * instead of this codswallop.
+     */
+    protected void setupNfc() {
+        Log.d("sd","Setting NFC adaptor.");
+        mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
+        if (mNfcAdapter == null) {
+            Toast.makeText(this, "This device doesn't support NFC.", Toast.LENGTH_LONG).show();
+        } else if (!mNfcAdapter.isEnabled()) {
+            Toast.makeText(this, "NFC is disabled.", Toast.LENGTH_LONG).show();
+            mNfcAdapter = null;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_abbott);
-
         tvResult = (TextView)findViewById(R.id.result);
 
-        mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
-
+        setupNfc();
         if (mNfcAdapter == null) {
             // Stop here, we definitely need NFC
-            Toast.makeText(this, "This device doesn't support NFC.", Toast.LENGTH_LONG).show();
             finish();
             return;
-
-        }
-
-        if (!mNfcAdapter.isEnabled()) {
-            Toast.makeText(this, "NFC is disabled.", Toast.LENGTH_LONG).show();
         }
 
         handleIntent(getIntent());
@@ -92,7 +107,6 @@ public class Abbott extends Activity {
          * Call this before onPause, otherwise an IllegalArgumentException is thrown as well.
          */
         stopForegroundDispatch(this, mNfcAdapter);
-
         super.onPause();
     }
 
@@ -113,7 +127,7 @@ public class Abbott extends Activity {
 
         if (NfcAdapter.ACTION_TECH_DISCOVERED.equals(action)) {
             // We want to handle everything else under this intent, for now
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            // intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
             Log.d("sd", "NfcAdapter.ACTION_TECH_DISCOVERED");
             // In case we would still use the Tech Discovered Intent
@@ -124,12 +138,12 @@ public class Abbott extends Activity {
             // TODO: integrate with below.
             new NfcVReaderTask().execute(tag);
 
-            // Test 'beeper'.
+            // Test ''.
             if (tag != this.tag) {
                 this.tag = tag;
                 if (b != null) b.cancel(true);
-                b = new ScheduledRead().readTag();
             }
+            b = new ScheduledRead().readTag();
         }
     }
 
@@ -195,7 +209,8 @@ public class Abbott extends Activity {
                     }
                 }
             };
-            final ScheduledFuture schedHandle = scheduler.scheduleAtFixedRate(runread, 15, 15, SECONDS);
+            final ScheduledFuture schedHandle =
+                scheduler.scheduleAtFixedRate(runread, LOOP_SECONDS, LOOP_SECONDS, SECONDS);
             // Self-cancelling with the below:
             /*scheduler.schedule(new Runnable() {
                 public void run() { schedHandle.cancel(true); }
@@ -213,15 +228,31 @@ public class Abbott extends Activity {
 
         @Override
         protected void onPostExecute(String result) {
-            // TODO: OK vs. error vibrate?
-            Vibrator vibrator = (Vibrator)getSystemService(VIBRATOR_SERVICE);
-            vibrator.vibrate(1000);
-            //Abbott.this.finish();
+            // TODO: vibrate prefs: (start, OK, err) lengths
+            NFCWatchdogRefresher.holdConnection(NfcV.get(tag), (LOOP_SECONDS*60)-1);
+            Log.i("sd", "Handling result " +result);
+            if (result != null && vibrate_ok > 0) { // TODO: if OK && ...
+                Vibrator vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+                vibrator.vibrate(vibrate_ok); // 1000
+            } else if (result == null && vibrate_err > 0) { // TODO: if err && ...
+                Vibrator vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+                vibrator.vibrate(vibrate_err); // 1000
+            } else {
+                Log.d("sd", "Vibrate disabled for sleepytime...");
+                //Abbott.this.finish();
+            }
+        }
+
+        @Override
+        protected void onPreExecute() {
+            // setupNfc();
+            NFCWatchdogRefresher.stopHoldingConnection();
         }
 
         @Override
         protected String doInBackground(Tag... params) {
             Tag tag = params[0];
+            Double result = null;
 
             NfcV nfcvTag = NfcV.get(tag);
             Log.d("sd", "Enter NdefReaderTask: " + nfcvTag.toString());
@@ -232,13 +263,7 @@ public class Abbott extends Activity {
             try {
                 nfcvTag.connect();
             } catch (IOException e) {
-                Abbott.this.runOnUiThread(new Runnable() {
-                    public void run() {
-                        Log.d("sd", "Error opening NFC connection!");
-                        Toast.makeText(getApplicationContext(), "Error opening NFC connection!", Toast.LENGTH_SHORT).show();
-                    }
-                });
-
+                errorToast("Error opening NFC connection!");
                 return null;
             }
 
@@ -266,10 +291,10 @@ public class Abbott extends Activity {
                 systeminfo = Arrays.copyOfRange(systeminfo, 2, systeminfo.length - 1);
 
                 byte[] memorySize = { systeminfo[6], systeminfo[5]};
-                Log.d("sd", "Memory Size: "+bytesToHex(memorySize)+" / "+ Integer.parseInt(bytesToHex(memorySize).trim(), 16 ));
+                Log.v("sd", "Memory Size: "+bytesToHex(memorySize)+" / "+ Integer.parseInt(bytesToHex(memorySize).trim(), 16 ));
 
                 byte[] blocks = { systeminfo[8]};
-                Log.d("sd", "blocks: "+bytesToHex(blocks)+" / "+ Integer.parseInt(bytesToHex(blocks).trim(), 16 ));
+                Log.v("sd", "blocks: " + bytesToHex(blocks) + " / " + Integer.parseInt(bytesToHex(blocks).trim(), 16));
 
                 int totalBlocks = Integer.parseInt(bytesToHex(blocks).trim(), 16);
 
@@ -290,19 +315,19 @@ public class Abbott extends Activity {
                     };
 
                     byte[] oneBlock = nfcvTag.transceive(cmd);
-                    Log.d("sd", "userdata: "+oneBlock.toString()+" - "+oneBlock.length);
+                    Log.v("sd", "userdata: " + oneBlock.toString() + " - " + oneBlock.length);
                     oneBlock = Arrays.copyOfRange(oneBlock, 1, oneBlock.length);
                     bloques[i-3] = Arrays.copyOf(oneBlock, 8);
 
 
-                    Log.d("sd", "userdata HEX: "+bytesToHex(oneBlock));
+                    Log.v("sd", "userdata HEX: " + bytesToHex(oneBlock));
 
                     lectura = lectura + bytesToHex(oneBlock)+"\r\n";
                 }
 
                 String s = "";
                 for(int i=0;i<40;i++) {
-                    Log.d("sd", bytesToHex(bloques[i]));
+                    Log.v("sd", bytesToHex(bloques[i]));
                     s = s + bytesToHex(bloques[i]);
                 }
 
@@ -310,16 +335,16 @@ public class Abbott extends Activity {
 
                 Log.d("sd", "Next read: "+s.substring(4,6));
                 int current = Integer.parseInt(s.substring(4, 6), 16);
-                Log.d("sd", "Next read: "+current);
+                Log.d("sd", "Next read: " + current);
                 Log.d("sd", "Next historic read "+s.substring(6,8));
 
                 String[] bloque1 = new String[16];
                 String[] bloque2 = new String[32];
-                Log.d("sd", "--------------------------------------------------");
+                Log.v("sd", "--------------------------------------------------");
                 int ii=0;
                 for (int i=8; i< 8+15*12; i+=12)
                 {
-                    Log.d("sd", s.substring(i,i+12));
+                    Log.v("sd", s.substring(i,i+12));
                     bloque1[ii] = s.substring(i,i+12);
 
                     final String g = s.substring(i+2,i+4)+s.substring(i,i+2);
@@ -331,27 +356,22 @@ public class Abbott extends Activity {
 
 
                 }
-                lectura = lectura + "Current approximate glucose "+currentGlucose;
-                Log.d("sd", "Current approximate glucose "+currentGlucose);
+                lectura = lectura + "Current approximate glucose " + currentGlucose;
+                Log.i("sd", "Current approximate glucose " + currentGlucose);
+                result = currentGlucose;
 
-                Log.d("sd", "--------------------------------------------------");
+                Log.v("sd", "--------------------------------------------------");
                 ii=0;
                 for (int i=188; i< 188+31*12; i+=12)
                 {
-                    Log.d("sd", s.substring(i,i+12));
+                    Log.v("sd", s.substring(i, i + 12));
                     bloque2[ii] = s.substring(i,i+12);
                     ii++;
                 }
-                Log.d("sd", "--------------------------------------------------");
+                Log.v("sd", "--------------------------------------------------");
 
             } catch (IOException e) {
-                Abbott.this.runOnUiThread(new Runnable() {
-                    public void run() {
-                        Log.d("sd", "Error reading NFC!");
-                        Toast.makeText(getApplicationContext(), "Error reading NFC!", Toast.LENGTH_SHORT).show();
-                    }
-                });
-
+                errorToast("Error reading NFC!");
                 return null;
             }
 
@@ -360,47 +380,56 @@ public class Abbott extends Activity {
             try {
                 nfcvTag.close();
             } catch (IOException e) {
-                /*
-                Abbott.this.runOnUiThread(new Runnable() {
-                    public void run() {
-                        Toast.makeText(getApplicationContext(), "Error closing NFC connection!", Toast.LENGTH_SHORT).show();
+                Log.w("sd", "Couldn't close tag. NBD.");
+            }
+
+            // TODO: if "play sound?" preference
+            if (play_sounds) {
+                MediaPlayer mp;
+                mp = MediaPlayer.create(Abbott.this, R.raw.notification);
+                mp.setSurface(null);
+                mp.setOnCompletionListener(new OnCompletionListener() {
+                    @Override
+                    public void onCompletion(MediaPlayer mp) {
+                        mp.reset();
+                        mp.release();
+                        mp = null;
                     }
                 });
-                return null;
-                */
+                mp.start();
             }
-
-            MediaPlayer mp;
-            mp = MediaPlayer.create(Abbott.this, R.raw.notification);
-            mp.setOnCompletionListener(new OnCompletionListener() {
-                @Override
-                public void onCompletion(MediaPlayer mp) {
-                    mp.reset();
-                    mp.release();
-                    mp=null;
-                }
-            });
-            mp.start();
 
             // TODO: if "write file?" preference
-            Date date = new Date() ;
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss") ;
-            File myFile = new File("/sdcard/fsl_"+dateFormat.format(date) + ".log");
-            try {
-                myFile.createNewFile();
-                FileOutputStream fOut = new FileOutputStream(myFile);
-                OutputStreamWriter myOutWriter =new OutputStreamWriter(fOut);
-                myOutWriter.append(lectura);
-                myOutWriter.close();
-                fOut.close();
+            if (write_file) {
+                Date date = new Date();
+                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+                File myFile = new File("/sdcard/fsl_" + dateFormat.format(date) + ".log");
+                try {
+                    myFile.createNewFile();
+                    FileOutputStream fOut = new FileOutputStream(myFile);
+                    OutputStreamWriter myOutWriter = new OutputStreamWriter(fOut);
+                    myOutWriter.append(lectura);
+                    myOutWriter.close();
+                    fOut.close();
+                } catch (Exception e) {
+                    Log.e("sd", "Error writing log file.");
+                }
             }
-            catch (Exception e)
-            {
-                Log.d("sd", "Error writing log file.");
-            }
-            return null;
+            return result.toString();
         }
 
+    }
+
+    /**
+     *  Makes a 'toast' runnable suitable for running on the UI thread.
+     */
+    private void errorToast(final String msg) {
+        Log.e("sd", msg);
+        Abbott.this.runOnUiThread(new Runnable() {
+            public void run() {
+                Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void addText(final String s)
@@ -425,9 +454,11 @@ public class Abbott extends Activity {
         // ((0x4531 & 0xFFF) / 6) - 37;
         int bitmask = 0x0FFF;
         double glucose = ((val & bitmask) / 6) - 37;
-        // TODO: if USE_SI preference:
-        return (glucose * Abbott.SI_FACTOR);
-        // TODO: else return glucose
+        if (USE_SI) {
+            return (glucose * Abbott.SI_FACTOR);
+        } else {
+            return glucose;
+        }
     }
 
 
