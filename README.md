@@ -2,6 +2,16 @@ Development Repository only
 ===========================
 Please direct all attention to [vicktor/FreeStyleLibre-NFC-Reader](vicktor/FreeStyleLibre-NFC-Reader)
 
+Obviously all are welcome to use what's here but be aware it might be _significantly_ behind the upstream master, so it's not the upstream authors' responsibility to help with this old branch.
+
+### SI Units
+
+One notable and unfinished difference (which I should probably form into a pull request) was the conversion to SI units (mmol/l, rather than mg/dl commonly used in the US).  This conversion is based on the molecular weight of glucose and is just as explained in https://en.wikipedia.org/wiki/Blood_sugar#Units:
+
+    1 / 18 = 0.05555555556
+
+=========================
+
 FreeStyleLibre-NFC-Reader
 =========================
 
