@@ -20,7 +20,9 @@ My working used the rounded value of 180 I see stated elsewhere, but I decided t
      = 180.15528 (g/mol effectively) ...
      so 10/180.15528 = 0.055507670938 mmol/l
 
-My code then rounded this to 0.05551.  I don't presume to know why 180 is used more commonly than the "precise" figure and certainly don't know what values multi-market meter devices use internally to "convert" between results (I wonder if any blood glucose monitoring measures pure C₆H₁₂O₆ or if it's always more complex than that...).  Anyway I suspect it's the least of anyone's concerns with regard to precision or accuracy but it's only fair I mention.
+I then rounded this to 0.05551.  I don't presume to know why 180 is used more commonly than the "precise" figure but given that for any life-sustaining blood reading the difference will always be less than 0.2mmol/l I wasn't too concerned -- I just wanted to use a figure I'd derived myself.
+
+Furthermore, I certainly don't know what values multi-market meter devices use internally to "convert" between results and I wonder if any blood glucose monitoring measures pure C₆H₁₂O₆ or if it's always more complex than that....  Anyway, though it's the least of anyone's concerns with regard to precision or accuracy it's only fair I mention the 'unusual' number.
 
 
 ## Original Docs Follow:
