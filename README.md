@@ -13,14 +13,14 @@ One notable and unfinished difference (which I should probably form into a pull 
      so mmol/mg of glucose will be the same, 0.00555555556 mmol/mg approx.
     1 mg/l = 0.00555555556 mmol/l
      so 1 mg/dl = 10 x 0.00555555556 = 0.0555555556 mmol/l (approx. 10/180)
-     
-My working uses the rounded value of 180 I see stated elsewhere, but perhaps it shouldn't.  To take it back a step further:
+    
+My working used the rounded value of 180 I see stated elsewhere, but I decided to take it back a step further:
 
     Molecular mass of glucose: 6 x 12.011 (C) + 12 x 1.00794 (H) + 6 x 15.999 (O) 
      = 180.15528 (g/mol effectively) ...
      so 10/180.15528 = 0.055507670938 mmol/l
 
-I don't presume to know why 180 is used more commonly than the "precise" figure and certainly don't know what values multi-market meter devices use internally to "convert" between results (I wonder if any blood glucose monitoring measures pure C₆H₁₂O₆ or if it's always more complex than that...).  Anyway I suspect it's the least of anyone's concerns with regard to precision or accuracy but it's only fair I mention that I've "lost" some "precision".
+My code then rounded this to 0.05551.  I don't presume to know why 180 is used more commonly than the "precise" figure and certainly don't know what values multi-market meter devices use internally to "convert" between results (I wonder if any blood glucose monitoring measures pure C₆H₁₂O₆ or if it's always more complex than that...).  Anyway I suspect it's the least of anyone's concerns with regard to precision or accuracy but it's only fair I mention.
 
 
 ## Original Docs Follow:
